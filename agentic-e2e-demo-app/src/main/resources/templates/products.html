@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Products - Demo App</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            padding: 20px;
+        }
+        .header {
+            background: white;
+            padding: 16px 24px;
+            border-radius: 8px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+            margin-bottom: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 {
+            color: #333;
+        }
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .cart-info {
+            color: #555;
+            font-size: 14px;
+        }
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn-primary {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #45a049;
+        }
+        .btn-secondary {
+            background-color: #2196F3;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background-color: #1976D2;
+        }
+        .btn-danger {
+            background-color: #f44336;
+            color: white;
+        }
+        .btn-danger:hover {
+            background-color: #d32f2f;
+        }
+        .products-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+        }
+        .product-card {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        .product-card h2 {
+            color: #333;
+            margin-bottom: 8px;
+            font-size: 18px;
+        }
+        .product-description {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 12px;
+            line-height: 1.4;
+        }
+        .product-price {
+            font-size: 20px;
+            font-weight: bold;
+            color: #4CAF50;
+            margin-bottom: 8px;
+        }
+        .product-stock {
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 16px;
+        }
+        .alert {
+            padding: 10px 14px;
+            border-radius: 4px;
+            margin-bottom: 16px;
+            font-size: 14px;
+        }
+        .alert-success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .alert-danger {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .user-info {
+            font-size: 14px;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Products</h1>
+        <div class="header-actions">
+            <span class="user-info">
+                Welcome, <strong sec:authentication="name">User</strong>!
+            </span>
+            <span class="cart-info" th:text="'Cart: ' + ${cartSize} + ' item(s)'">Cart: 0 item(s)</span>
+            <a href="/checkout" id="checkout-btn" class="btn btn-secondary"
+               th:classappend="${cartSize > 0} ? '' : ' disabled'">
+                Checkout (<span th:text="${cartSize}">0</span>)
+            </a>
+            <form action="/logout" method="POST" style="display:inline;">
+                <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+                <button type="submit" class="btn btn-danger">Logout</button>
+            </form>
+        </div>
+    </div>
+
+    <div th:if="${successMessage}" class="alert alert-success" th:text="${successMessage}"></div>
+    <div th:if="${errorMessage}" class="alert alert-danger" th:text="${errorMessage}"></div>
+
+    <div class="products-grid">
+        <div th:each="product : ${products}" class="product-card">
+            <h2 th:text="${product.name}">Product Name</h2>
+            <p class="product-description" th:text="${product.description}">Product description goes here.</p>
+            <div class="product-price" th:text="'$' + ${product.price}">$0.00</div>
+            <div class="product-stock" th:text="'In stock: ' + ${product.stock}">In stock: 0</div>
+            <form action="/cart/add" method="POST">
+                <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+                <input type="hidden" name="productId" th:value="${product.id}"/>
+                <button type="submit"
+                        th:id="'add-to-cart-' + ${product.id}"
+                        class="btn btn-primary"
+                        th:disabled="${product.stock <= 0}">
+                    Add to Cart
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div th:if="${#lists.isEmpty(products)}" style="text-align:center; padding:40px; color:#888;">
+        <p>No products available at the moment.</p>
+    </div>
+</body>
+</html>

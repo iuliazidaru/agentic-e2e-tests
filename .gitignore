@@ -1,0 +1,16 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Maven build output
+target/
+
+# Local OS and IDE files
+.DS_Store
+.idea/
+*.iml
+**/.claude/settings.local.json
+
+# Logs
+*.log
