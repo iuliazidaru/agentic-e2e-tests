@@ -70,13 +70,58 @@ public class Orchestrator {
 
             JsonNode toolCalls = assistantMsg.path("tool_calls");
             if (toolCalls.isMissingNode() || !toolCalls.isArray() || toolCalls.isEmpty()) {
-                // No tool calls — LLM is done
-                String finalAnswer = assistantMsg.path("content").asText();
+                String finalAnswer = assistantMsg.path("content").asText("");
+
+                // If the model gave an empty response on iteration 1 without calling tools,
+                // nudge it to use the registered tools — but only if there are tools that
+                // could plausibly serve the request.
+                if (finalAnswer.isBlank() && i == 0 && !tools.isEmpty()) {
+                    log.warn("Model returned empty message on iteration 1 without calling tools. Retrying with explicit tool instruction...");
+                    messages.add(ollama.userMessage("You must call one of the available tools (e.g. database or browser) to complete the request. Do not reply empty."));
+                    continue;
+                }
+
+                // If the model gave a non-empty answer but forgot PASS/FAIL, give it one
+                // chance to restate — but only once (i == 1 guards against infinite loop).
+                if (!finalAnswer.isBlank()
+                        && !containsVerdict(finalAnswer)
+                        && i == 1) {
+                    log.warn("Model response lacks PASS/FAIL verdict. Requesting restatement...");
+                    messages.add(ollama.userMessage(
+                            "Your response must start with PASS or FAIL. " +
+                            "Restate your answer starting with exactly PASS: or FAIL:."));
+                    continue;
+                }
+
+                // Fall back to tool results if final answer is blank or still missing a verdict
+                if (finalAnswer.isBlank() || !containsVerdict(finalAnswer)) {
+                    for (int m = messages.size() - 1; m >= 0; m--) {
+                        JsonNode msg = messages.get(m);
+                        if ("tool".equals(msg.path("role").asText())) {
+                            String toolContent = msg.path("content").asText("");
+                            if (containsVerdict(toolContent)) {
+                                log.info("Falling back to tool result as final answer: {}", toolContent);
+                                finalAnswer = toolContent;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // If still blank, the model never used a tool and produced no answer.
+                // This usually means a required tool (e.g. "database") was not registered.
+                if (finalAnswer.isBlank()) {
+                    finalAnswer = "FAIL: Agent produced no answer. "
+                            + "Required tool may not be registered (registered tools: " + tools.keySet() + ").";
+                    log.warn("Agent returned blank answer — returning synthetic FAIL: {}", finalAnswer);
+                }
+
                 log.info("Agent completed. Answer: {}", finalAnswer);
                 return finalAnswer;
             }
 
             // Dispatch every tool call in this turn
+            StringBuilder executedResults = new StringBuilder();
             for (JsonNode toolCall : toolCalls) {
                 String toolName = toolCall.path("function").path("name").asText();
                 JsonNode rawArgs = toolCall.path("function").path("arguments");
@@ -91,7 +136,18 @@ public class Orchestrator {
                 String result = dispatchTool(toolName, args);
                 log.info("Tool result for {}: {}", toolName, result);
 
+                executedResults.append(result).append("\n");
                 messages.add(ollama.toolResultMessage(toolName, result));
+            }
+
+            // If tool results already contain a verdict and the assistant message also has
+            // non-empty content, only short-circuit when that content contains the verdict.
+            // Otherwise keep looping so the LLM can emit a proper PASS/FAIL summary.
+            if (containsVerdict(executedResults.toString())) {
+                String content = assistantMsg.path("content").asText("");
+                if (!content.isBlank() && containsVerdict(content)) {
+                    return content;
+                }
             }
         }
 
@@ -99,6 +155,22 @@ public class Orchestrator {
     }
 
     // ── Internal helpers ──────────────────────────────────────────────────────
+
+    /**
+     * Returns true if the text contains a PASS or FAIL verdict.
+     * Requires the word to appear at the start of a line or after whitespace/punctuation,
+     * so that "PASS" buried inside an error stack-trace or Playwright log does not match.
+     */
+    private static final java.util.regex.Pattern VERDICT_PATTERN =
+            java.util.regex.Pattern.compile("(?:^|[\\s:,])(?:PASS|FAIL)(?:[:\\s,!.]|$)",
+                    java.util.regex.Pattern.CASE_INSENSITIVE | java.util.regex.Pattern.MULTILINE);
+
+    private static boolean containsVerdict(String text) {
+        if (text == null || text.isBlank()) return false;
+        // Error responses from dispatchTool always start with "ERROR:" — never a verdict.
+        if (text.startsWith("ERROR:")) return false;
+        return VERDICT_PATTERN.matcher(text).find();
+    }
 
     private String dispatchTool(String name, JsonNode args) {
         AgentTool tool = tools.get(name);
@@ -122,12 +194,16 @@ public class Orchestrator {
         System.out.println(prompt);
         System.out.print("Press Enter when done... ");
         System.out.flush();
-        try (java.io.BufferedReader tty = new java.io.BufferedReader(
-                new java.io.FileReader("/dev/tty"))) {
-            tty.readLine();
+        // Open /dev/tty directly so we always read from the real terminal,
+        // even when Maven Surefire has redirected System.in to a null stream.
+        try (java.io.InputStream tty = new java.io.FileInputStream("/dev/tty");
+             java.io.BufferedReader reader = new java.io.BufferedReader(
+                     new java.io.InputStreamReader(tty))) {
+            reader.readLine();
         } catch (Exception e) {
-            // fallback to System.in if /dev/tty is unavailable
-            new Scanner(System.in).nextLine();
+            log.warn("Could not open /dev/tty for human pause ({}). " +
+                     "Run with -DforkCount=0 or set BROWSER_HEADLESS=false " +
+                     "and interact via the browser.", e.getMessage());
         }
         System.out.println("Resuming agent...\n");
         return "Human completed the required step successfully.";
@@ -149,14 +225,20 @@ public class Orchestrator {
 
     private String defaultSystemPrompt() {
         return """
-                You are an E2E test automation agent. You control a browser, Outlook email, \
-                and a database through the tools provided to you.
-                
-                Rules:
-                - Use tools step by step. Complete each step before moving on.
-                - After completing all steps, summarise the test result clearly: PASS or FAIL.
-                - If a step fails, report it immediately with the reason.
-                - Never guess data — always verify via tools.
+                You are an expert E2E test automation agent.
+                You MUST use the provided tools to execute the steps in the user goal.
+
+                For database actions:
+                - Call the `database` tool with parameters `action` (e.g. "assertRowExists", "query") and `sql`.
+
+                For browser actions:
+                - Call the `browser` tool with parameters `action` (e.g. "navigate", "click", "waitForLogin") and the required parameters.
+
+                CRITICAL RULE FOR FINAL ANSWER:
+                After all tools have been called, your final message MUST start with exactly the word PASS or FAIL in uppercase, followed by a colon and a brief reason.
+                Example of correct final answer: "PASS: All steps completed successfully."
+                Example of correct final answer: "FAIL: Step 2 failed because element was not found."
+                Do NOT use any other format. Do NOT write a paragraph without starting with PASS or FAIL.
                 """;
     }
 

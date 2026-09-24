@@ -62,11 +62,13 @@ public class OllamaClient {
             tools.forEach(toolArray::add);
         }
 
+        String jsonPayload = mapper.writeValueAsString(payload);
+
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + "/api/chat"))
                 .header("Content-Type", "application/json")
                 .timeout(Duration.ofMinutes(3))
-                .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(payload)))
+                .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
                 .build();
 
         HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());

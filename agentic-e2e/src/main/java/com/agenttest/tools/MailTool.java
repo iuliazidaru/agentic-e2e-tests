@@ -50,14 +50,19 @@ public class MailTool implements AgentTool {
         log.info("MailTool initialised for mailbox: {}", mailboxUserId);
     }
 
-    /** Convenience constructor that reads from environment variables. */
+    /** Convenience constructor that reads from environment variables (or system properties loaded from .env). */
     public static MailTool fromEnv() {
         return new MailTool(
-                System.getenv("AZURE_TENANT_ID"),
-                System.getenv("AZURE_CLIENT_ID"),
-                System.getenv("AZURE_CLIENT_SECRET"),
-                System.getenv("MAIL_USER_ID")
+                envOrProp("AZURE_TENANT_ID"),
+                envOrProp("AZURE_CLIENT_ID"),
+                envOrProp("AZURE_CLIENT_SECRET"),
+                envOrProp("MAIL_USER_ID")
         );
+    }
+
+    private static String envOrProp(String key) {
+        String val = System.getenv(key);
+        return (val != null && !val.isBlank()) ? val : System.getProperty(key);
     }
 
     @Override public String name()        { return "mail"; }
@@ -144,8 +149,8 @@ public class MailTool implements AgentTool {
                             new String[]{"id", "subject", "from", "receivedDateTime", "isRead"};
                     requestConfig.queryParameters.top = top;
                     requestConfig.queryParameters.orderby = new String[]{"receivedDateTime desc"};
-                });x//gvfa
-gvop  k
+                });
+
         if (messages == null || messages.getValue() == null || messages.getValue().isEmpty()) {
             return "Inbox is empty.";
         }

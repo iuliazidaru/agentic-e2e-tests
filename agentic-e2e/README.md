@@ -22,7 +22,28 @@ Local LLM: Ollama (qwen2.5:14b or mistral-nemo)
 
 ## Prerequisites
 
-### 1. Install Ollama
+### 1. Install & Run Ollama
+
+#### Option A — Running via Podman Compose
+```bash
+# Start Ollama container
+podman-compose up -d
+
+# Pull the model (first time only)
+podman exec ollama ollama pull qwen2.5:14b
+```
+
+> **Note on Memory (Out of Memory error with 14B model):**
+> If you encounter `insufficient memory` / `error loading model` when running large models in Podman, increase the Podman VM memory allocation (e.g. to 10 GB):
+> ```bash
+> podman-compose down
+> podman machine stop
+> podman machine set --memory 10240
+> podman machine start
+> podman-compose up -d
+> ```
+
+#### Option B — Native Install (macOS / Linux / Windows)
 ```bash
 # macOS / Linux
 curl -fsSL https://ollama.com/install.sh | sh
@@ -33,8 +54,9 @@ curl -fsSL https://ollama.com/install.sh | sh
 ### 2. Pull a model with tool-calling support
 ```bash
 ollama pull qwen2.5:14b    # recommended (~9GB)
-# or lighter option:
+# or lighter options:
 ollama pull mistral-nemo   # (~7GB)
+ollama pull qwen2.5:1.5b   # (~1GB)
 ```
 
 ### 3. Install Playwright browsers
@@ -46,7 +68,31 @@ mvn exec:java -e -D exec.mainClass=com.microsoft.playwright.CLI -D exec.args="in
 
 ## Configuration
 
-Set environment variables (or add to your CI pipeline / `.env`):
+### Option A — `.env` file (recommended for local development)
+
+Copy the template and fill in your values:
+
+```bash
+cp agentic-e2e/.env.example agentic-e2e/.env   # if an example file exists
+# or create agentic-e2e/.env from scratch
+```
+
+`agentic-e2e/.env` is loaded automatically by the test framework at startup
+(`AgentTestBase.loadDotEnv()`). The file is git-ignored so secrets stay off version control.
+
+**One-shot shell export** — export all variables into your current shell session
+(useful if you want to run `mvn` directly without the framework's auto-loader):
+
+```bash
+export $(grep -v '^#' agentic-e2e/.env | xargs)
+```
+
+> **Note:** this command must be run from the project root.
+> It skips comment lines (`#`) and blank lines and exports every `KEY=VALUE` pair
+> as a shell environment variable. Wrap values that contain spaces in double quotes
+> inside the `.env` file.
+
+### Option B — export variables individually
 
 ```bash
 # LLM
@@ -55,6 +101,9 @@ export OLLAMA_MODEL=qwen2.5:14b
 
 # Browser
 export BROWSER_HEADLESS=false       # false = visible browser window
+
+# Application under test
+export APP_BASE_URL=http://localhost:8080
 
 # Database (pick your driver and add it to pom.xml)
 export DB_JDBC_URL=jdbc:postgresql://localhost:5432/mydb
@@ -69,6 +118,22 @@ export AZURE_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 export AZURE_CLIENT_SECRET=your-secret
 export MAIL_USER_ID=tester@yourcompany.com
 ```
+
+### Variable reference
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `APP_BASE_URL` | ✅ | — | Base URL of the application under test |
+| `OLLAMA_BASE_URL` | | `http://localhost:11434` | Ollama server URL |
+| `OLLAMA_MODEL` | | `qwen2.5:14b` | Model name (must support tool-calling) |
+| `BROWSER_HEADLESS` | | `false` | `true` = no visible browser window |
+| `DB_JDBC_URL` | | — | JDBC URL — omit to disable `DatabaseTool` (demo: `jdbc:postgresql://localhost:5432/demodb`) |
+| `DB_USERNAME` | | — | Database username (demo: `demo`) |
+| `DB_PASSWORD` | | — | Database password (demo: `demo123`) |
+| `AZURE_TENANT_ID` | | — | Azure AD tenant — omit to disable `MailTool` |
+| `AZURE_CLIENT_ID` | | — | Azure app client ID |
+| `AZURE_CLIENT_SECRET` | | — | Azure app client secret |
+| `MAIL_USER_ID` | | — | Mailbox address to send/read mail from |
 
 ---
 

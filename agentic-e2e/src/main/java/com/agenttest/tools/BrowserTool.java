@@ -142,7 +142,9 @@ public class BrowserTool implements AgentTool, AutoCloseable {
             case "waitForLogin" -> {
                 String loginUrl = args.path("url").asText(null);
                 if (loginUrl != null) {
+                    log.info("waitForLogin → navigating to {}", loginUrl);
                     page.navigate(loginUrl);
+                    page.waitForLoadState();
                 }
                 // This suspends the agent loop via the Orchestrator's human-pause handler
                 throw new HumanInputRequiredException(

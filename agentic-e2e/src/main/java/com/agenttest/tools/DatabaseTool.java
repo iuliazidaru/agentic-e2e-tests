@@ -41,13 +41,21 @@ public class DatabaseTool implements AgentTool, AutoCloseable {
         log.info("DB connected: {}", jdbcUrl);
     }
 
-    /** Convenience constructor from environment variables. */
+    /** Convenience constructor from environment variables (or system properties loaded from .env). */
     public static DatabaseTool fromEnv() throws SQLException {
+        System.out.println( envOrProp("DB_JDBC_URL"));
+        System.out.println( envOrProp("DB_USERNAME"));
+        System.out.println( envOrProp("DB_PASSWORD"));
         return new DatabaseTool(
-                System.getenv("DB_JDBC_URL"),
-                System.getenv("DB_USERNAME"),
-                System.getenv("DB_PASSWORD")
+                envOrProp("DB_JDBC_URL"),
+                envOrProp("DB_USERNAME"),
+                envOrProp("DB_PASSWORD")
         );
+    }
+
+    private static String envOrProp(String key) {
+        String val = System.getenv(key);
+        return (val != null && !val.isBlank()) ? val : System.getProperty(key);
     }
 
     @Override public String name()        { return "database"; }

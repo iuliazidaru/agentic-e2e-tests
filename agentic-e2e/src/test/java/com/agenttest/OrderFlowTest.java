@@ -86,6 +86,8 @@ class OrderFlowTest extends AgentTestBase {
     @Test
     @Disabled("Temporarily broken")
     void sendEmail_shouldAppearInInbox() throws Exception {
+        requireMail();
+
         String result = run("""
                 Send a test email using the mail tool:
                   action=sendMail
@@ -107,6 +109,8 @@ class OrderFlowTest extends AgentTestBase {
      */
     @Test
     void database_shouldHaveAdminUser() throws Exception {
+        requireDatabase();
+
         String result = run("""
                 Use the database tool with action=assertRowExists and
                 sql="SELECT id FROM users WHERE role='ADMIN' AND active=true LIMIT 1".

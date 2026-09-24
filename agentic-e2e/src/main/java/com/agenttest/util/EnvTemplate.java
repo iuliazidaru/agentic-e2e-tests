@@ -20,8 +20,13 @@ public class EnvTemplate {
         Matcher m = PLACEHOLDER.matcher(template);
         StringBuilder sb = new StringBuilder();
         while (m.find()) {
-            String var   = m.group(1);
+            String var = m.group(1);
+            // Environment variables take precedence; fall back to system properties
+            // (populated by AgentTestBase.loadDotEnv() from the .env file).
             String value = System.getenv(var);
+            if (value == null) {
+                value = System.getProperty(var);
+            }
             m.appendReplacement(sb, Matcher.quoteReplacement(value != null ? value : m.group()));
         }
         m.appendTail(sb);
